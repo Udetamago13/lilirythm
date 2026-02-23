@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>リリリズム</title>
+    <link href="https://fonts.googleapis.com/css2?family=Yomogi&display=swap" rel="stylesheet">
+    <style>
+        :root { --main-pink: #ffb6c1; --dark-pink: #ff69b4; --bg-color: #fff0f5; --text-color: #8b008b; }
+        body { margin: 0; overflow: hidden; font-family: 'Yomogi', cursive; background-color: var(--bg-color); color: var(--text-color); user-select: none; }
+        .screen { display: none; width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; align-items: center; justify-content: center; flex-direction: column; }
+        .active { display: flex; }
+        
+        #global-ui { position: fixed; top: 10px; right: 20px; z-index: 1000; background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 5px; font-size: 16px; font-weight: bold; }
+        input[type=range] { accent-color: var(--dark-pink); }
+
+        #lock-screen input { padding: 10px; border: 2px solid var(--main-pink); border-radius: 10px; font-size: 20px; text-align: center; font-family: 'Yomogi', cursive; }
+        .btn-common { background: var(--main-pink); color: white; border: none; padding: 15px 30px; margin: 10px; border-radius: 20px; font-size: 24px; font-family: inherit; cursor: pointer; box-shadow: 0 4px 0 var(--dark-pink); transition: transform 0.1s, box-shadow 0.1s; }
+        .btn-common:active { transform: translateY(4px); box-shadow: none; }
+        .btn-common:disabled { background: #d3d3d3; box-shadow: 0 4px 0 #a9a9a9; cursor: not-allowed; color: #666; }
+
+        #title-text { font-size: 90px; letter-spacing: 15px; position: relative; display: flex; align-items: center; margin-bottom: 50px; height: 120px; font-weight: bold; }
+        .dot { color: var(--dark-pink); font-size: 70px; position: absolute; bottom: 35px; }
+        .title-menu { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+        #game-screen { flex-direction: row; }
+        #game-container { display: flex; width: 800px; height: 100vh; background: rgba(255, 255, 255, 0.8); border-left: 2px solid var(--main-pink); border-right: 2px solid var(--main-pink); position: relative; box-shadow: 0 0 20px rgba(255, 182, 193, 0.5); overflow: hidden; }
+        #ruler-area { width: 100px; height: 100%; border-right: 2px dashed var(--main-pink); position: relative; background: rgba(255, 250, 250, 0.9); z-index: 2; font-weight: bold; }
+        .ruler-mark { position: absolute; left: 5px; font-size: 16px; color: #888; width: 100%; border-top: 1px solid #ddd; }
+        
+        #lanes-area { display: flex; flex: 1; position: relative; z-index: 2; }
+        .lane { flex: 1; border-right: 1px solid rgba(255, 182, 193, 0.3); position: relative; display: flex; flex-direction: column; justify-content: flex-end; padding-bottom: 50px; transition: background 0.1s; }
+        .lane.active-lane { background: rgba(255, 105, 180, 0.3); }
+        .lane-key { text-align: center; font-weight: bold; font-size: 20px; color: var(--dark-pink); background: rgba(255, 255, 255, 0.9); padding: 10px 0; border-top: 2px solid var(--dark-pink); }
+        #judgment-line { position: absolute; bottom: 90px; width: 100%; height: 4px; background: var(--dark-pink); z-index: 10; }
+        .visual-note { position: absolute; width: 80%; left: 10%; height: 15px; background: linear-gradient(to bottom, #fff, var(--dark-pink)); border-radius: 5px; box-shadow: 0 0 10px rgba(255, 105, 180, 0.8); z-index: 20; }
+
+        #bg-judge-area { position: absolute; top: 0; left: 100px; width: calc(100% - 100px); height: 100%; display: flex; justify-content: center; align-items: center; z-index: 1; overflow: hidden; pointer-events: none; }
+        
+        /* --- より自然な映写機の振動を再現 --- */
+        .film-frame {
+            position: relative; width: 400px; height: 400px;
+            border-radius: 20px; border: 4px solid var(--main-pink);
+            box-shadow: 0 0 30px rgba(255, 105, 180, 0.3);
+            overflow: hidden;
+            animation: film-jitter-natural 4s infinite;
+        }
+
+        #judge-image {
+            width: 100%; height: 100%; object-fit: cover;
+            transition: opacity 0.1s;
+            filter: sepia(0.7) contrast(1.3) brightness(0.9);
+            opacity: 0.8;
+            animation: film-flicker 0.15s infinite alternate;
+        }
+
+        /* ノイズ1: スクラッチ（縦傷） */
+        .film-frame::after {
+            content: ""; position: absolute; top: 0; left: 0; width: 200%; height: 100%;
+            background-image: repeating-linear-gradient(to right, transparent 0%, transparent 1%, rgba(0,0,0,0.2) 1%, transparent 1.5%, transparent 3%, rgba(0,0,0,0.1) 3%, transparent 3.2%);
+            pointer-events: none; opacity: 0.5;
+            animation: film-scratch-move 0.3s infinite steps(3) alternate;
+            z-index: 2;
+        }
+        
+        /* ノイズ2: ダスト（バチバチ感） */
+        .film-frame::before {
+            content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; opacity: 0.8; z-index: 3;
+            animation: film-dust-flicker 0.4s infinite steps(4);
+        }
+
+        @keyframes film-jitter-natural {
+            0%, 25% { transform: translate(0, 0) rotate(0deg); }
+            26% { transform: translate(-1px, 0.5px) rotate(-0.1deg); }
+            27% { transform: translate(0.5px, -0.5px) rotate(0.1deg); }
+            28% { transform: translate(-0.5px, 0.5px) rotate(0deg); }
+            29%, 60% { transform: translate(0, 0) rotate(0deg); }
+            61% { transform: translate(1px, 1px) rotate(0.1deg); }
+            62% { transform: translate(-0.5px, -1px) rotate(-0.1deg); }
+            63%, 85% { transform: translate(0, 0) rotate(0deg); }
+            86% { transform: translate(-0.5px, -0.5px) rotate(-0.1deg); }
+            87% { transform: translate(0.5px, 1px) rotate(0.1deg); }
+            88%, 100% { transform: translate(0, 0) rotate(0deg); }
+        }
+
+        @keyframes film-flicker { 0% { filter: sepia(0.7) contrast(1.3) brightness(0.9); } 100% { filter: sepia(0.7) contrast(1.3) brightness(1.05); } }
+        @keyframes film-scratch-move { 0% { transform: translateX(0); } 100% { transform: translateX(-10px); } }
+        @keyframes film-dust-flicker {
+            0% { box-shadow: 10px 20px 0 -2px rgba(0,0,0,0.6), 50px 80px 0 -1px rgba(0,0,0,0.5), 150px 40px 0 -2px rgba(0,0,0,0.6), 200px 120px 0 -1px rgba(0,0,0,0.5), 300px 250px 0 -2px rgba(0,0,0,0.6); }
+            25% { box-shadow: 30px 10px 0 -1px rgba(0,0,0,0.5), 80px 150px 0 -2px rgba(0,0,0,0.6), 220px 60px 0 -1px rgba(0,0,0,0.5), 280px 200px 0 -2px rgba(0,0,0,0.6), 50px 300px 0 -1px rgba(0,0,0,0.5); }
+            50% { box-shadow: none; }
+            75% { box-shadow: 120px 30px 0 -2px rgba(0,0,0,0.6), 40px 180px 0 -1px rgba(0,0,0,0.5), 250px 90px 0 -2px rgba(0,0,0,0.6), 180px 280px 0 -1px rgba(0,0,0,0.5), 320px 150px 0 -2px rgba(0,0,0,0.6); }
+            100% { box-shadow: 60px 220px 0 -1px rgba(0,0,0,0.5), 140px 50px 0 -2px rgba(0,0,0,0.6), 290px 110px 0 -1px rgba(0,0,0,0.5), 100px 320px 0 -2px rgba(0,0,0,0.6), 230px 230px 0 -1px rgba(0,0,0,0.5); }
+        }
+
+        #judge-text { position: absolute; top: 30%; width: 100%; text-align: center; font-size: 60px; font-weight: bold; color: var(--dark-pink); text-shadow: 2px 2px 0 white, -2px -2px 0 white, 2px -2px 0 white, -2px 2px 0 white; opacity: 0; transition: opacity 0.1s; pointer-events: none; z-index: 0; }
+
+        #options-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 20px; border: 4px solid var(--main-pink); z-index: 2000; box-shadow: 0 10px 30px rgba(0,0,0,0.2); font-size: 18px; }
+        .opt-group { margin-bottom: 15px; border-bottom: 1px dotted #ccc; padding-bottom: 10px;}
+
+        #record-panel { display: none; position: absolute; top: 20px; left: 20px; background: rgba(255, 255, 255, 0.95); border: 3px solid #8b008b; border-radius: 15px; padding: 15px; z-index: 2000; box-shadow: 0 5px 15px rgba(0,0,0,0.3); flex-direction: column; gap: 10px; font-weight: bold; }
+        #record-panel h3 { margin: 0 0 5px 0; color: #8b008b; text-align: center; font-size: 18px; }
+        #record-output { width: 100%; height: 100px; font-family: monospace; font-size: 12px; resize: none; margin-top: 5px; }
+
+        .record-toggle-area { background: #f8f8ff; border: 2px solid #9370db; border-radius: 15px; padding: 15px; margin-top: 20px; display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .record-toggle-area input[type="checkbox"] { transform: scale(1.5); accent-color: #9370db; cursor: pointer; }
+        .record-toggle-area span { font-size: 20px; font-weight: bold; color: #4b0082; }
+
+        #ready-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; justify-content: center; align-items: center; background: rgba(255, 240, 245, 0.7); z-index: 3000; }
+        #ready-word { font-size: 120px; font-weight: bold; color: var(--dark-pink); text-shadow: 4px 4px 0 white, -4px -4px 0 white, 4px -4px 0 white, -4px 4px 0 white; opacity: 0; transform: scale(0.5); transition: opacity 0.3s, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); position: absolute; }
+        
+        #result-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 240, 245, 0.95); z-index: 4000; flex-direction: column; align-items: center; justify-content: center; }
+        #result-title { font-size: 80px; color: var(--dark-pink); text-shadow: 4px 4px 0 white, -4px -4px 0 white, 4px -4px 0 white, -4px 4px 0 white; margin-bottom: 20px; }
+        #result-score-text { font-size: 50px; font-weight: bold; color: #8b008b; margin-bottom: 40px; }
+    </style>
+</head>
+<body>
+
+    <div id="global-ui">
+        <label>🎵 BGM: <input type="range" id="bgm-vol" min="0" max="1" step="0.05" value="0.5"></label>
+        <label>🔊 SE: <input type="range" id="se-vol" min="0" max="1" step="0.05" value="0.5"></label>
+        <div id="score-display" style="margin-top:5px; font-weight:bold; color:var(--dark-pink); font-size:20px;">SCORE: 0%</div>
+    </div>
+
+    <div id="lock-screen" class="screen">
+        <h2>パスワードを入力してね</h2>
+        <div><input type="password" id="pass-input" placeholder="パスワード"><button id="btn-pass-submit" class="btn-common" style="padding: 10px 20px; font-size: 20px;">決定</button></div>
+    </div>
+    <div id="title-screen" class="screen">
+        <div id="title-text"><span>り</span><span>り</span><span>り</span><span>ず</span><span>む</span><div id="title-dot" class="dot">・</div></div>
+        <div class="title-menu"><button id="btn-title-start" class="btn-common">はじめる</button><button class="btn-common btn-open-options" style="background: #fff; color: var(--dark-pink); border: 2px solid var(--dark-pink);">⚙️ オプション</button></div>
+    </div>
+    <div id="select-screen" class="screen">
+        <h2>ステージセレクト</h2><div id="stage-list"></div><button class="btn-common btn-open-options" style="margin-top: 20px;">⚙️ オプション</button>
+        <label class="record-toggle-area"><input type="checkbox" id="chk-record-mode"><span>🛠 譜面作成モードをONにする</span></label>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <div id="ready-overlay"><div id="ready-word"></div></div>
+        <div id="result-overlay">
+            <h2 id="result-title">STAGE CLEAR!</h2>
+            <div id="result-score-text">SCORE: 100%</div>
+            <button class="btn-common" onclick="returnToSelect()">ステージ選択へ戻る</button>
+        </div>
+
+        <div id="record-panel">
+            <h3 id="record-stage-title">🔴 譜面作成モード</h3>
+            <label>🐢 再生速度: <span id="rate-display">1.0</span>x<br><input type="range" id="record-rate" min="0.5" max="1" step="0.1" value="1"></label>
+            <div style="display: flex; gap: 5px;"><button id="btn-rec-start" class="btn-common" style="margin:0; padding: 10px; font-size: 16px; background: #ff4500;">録画開始</button><button id="btn-rec-stop" class="btn-common" style="margin:0; padding: 10px; font-size: 16px; background: #696969;">停止＆出力</button></div>
+            <textarea id="record-output" readonly placeholder="ここにデータが出力されます。"></textarea>
+        </div>
+        <div id="game-container">
+            <div id="ruler-area"></div>
+            <div id="bg-judge-area">
+                <div id="judge-text"></div> 
+                <div class="film-frame">
+                    <img id="judge-image" src="img/start.png" alt="判定画像">
+                </div>
+            </div>
+            <div id="lanes-area">
+                <div id="judgment-line"></div>
+                <div class="lane" id="lane-0"><div class="lane-key" style="margin-top:auto;">Z</div></div>
+                <div class="lane" id="lane-1"><div class="lane-key" style="margin-top:auto;">X</div></div>
+                <div class="lane" id="lane-2"><div class="lane-key" style="margin-top:auto;">C</div></div>
+                <div class="lane" id="lane-3"><div class="lane-key" style="margin-top:auto;">←</div></div>
+                <div class="lane" id="lane-4"><div class="lane-key" style="margin-top:auto;">↓</div></div>
+                <div class="lane" id="lane-5"><div class="lane-key" style="margin-top:auto;">→</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="options-modal">
+        <h3>設定</h3>
+        <div class="opt-group"><strong>タイミング調整 (Offset)</strong><br><label><input type="number" id="opt-offset" value="0" style="width:60px;"> ms</label></div>
+        <div class="opt-group">
+            <strong>判定幅 (Hit Window)</strong><br>
+            <label>◎ (Perfect): ±<input type="number" id="opt-perfect" value="40" style="width:50px;"> ms</label><br>
+            <label>〇 (Good): ±<input type="number" id="opt-good" value="80" style="width:50px;"> ms</label><br>
+            <label>△ (Bad): ±<input type="number" id="opt-bad" value="130" style="width:50px;"> ms</label>
+        </div>
+        <button class="btn-common" onclick="document.getElementById('options-modal').style.display='none'">閉じる</button>
+    </div>
+
+    <audio id="bgm-player"></audio>
+
+    <script>
+        // ▼▼▼ 譜面データ（完全版！） ▼▼▼
+        const stage1Data = [{"t":3.522,"l":0},{"t":6.154,"l":1},{"t":7.298,"l":2},{"t":8.638,"l":3},{"t":11.511,"l":4},{"t":12.202,"l":5},{"t":13.89,"l":0},{"t":18.598,"l":1},{"t":19.522,"l":2},{"t":20.521,"l":3},{"t":21.357,"l":5},{"t":21.918,"l":4},{"t":24.597,"l":0},{"t":25.721,"l":5},{"t":27.241,"l":1},{"t":27.857,"l":0},{"t":28.573,"l":3},{"t":29.211,"l":4},{"t":29.522,"l":5},{"t":29.913,"l":3},{"t":31.211,"l":0},{"t":32.877,"l":2},{"t":33.481,"l":1},{"t":34.821,"l":3},{"t":35.278,"l":4},{"t":35.89,"l":5},{"t":37.23,"l":0},{"t":37.585,"l":2},{"t":37.919,"l":4},{"t":37.977,"l":5},{"t":40.562,"l":0},{"t":41.849,"l":2},{"t":42.582,"l":4},{"t":43.518,"l":5},{"t":44.522,"l":5},{"t":45.226,"l":0},{"t":45.91,"l":5},{"t":46.865,"l":5},{"t":47.861,"l":1},{"t":48.577,"l":4},{"t":49.889,"l":2},{"t":51.227,"l":3},{"t":52.545,"l":0},{"t":53.194,"l":1},{"t":53.927,"l":2},{"t":56.258,"l":3},{"t":57.862,"l":4},{"t":59.229,"l":5},{"t":60.857,"l":2},{"t":61.197,"l":0},{"t":61.549,"l":1},{"t":61.881,"l":3},{"t":62.349,"l":3},{"t":62.389,"l":3},{"t":62.927,"l":4},{"t":63.214,"l":5},{"t":63.869,"l":0},{"t":64.328,"l":4},{"t":64.538,"l":5},{"t":65.014,"l":3},{"t":65.854,"l":1},{"t":66.535,"l":2},{"t":66.91,"l":5},{"t":67.226,"l":1},{"t":68.19,"l":4},{"t":69.17,"l":3},{"t":69.526,"l":4},{"t":69.919,"l":4},{"t":70.365,"l":3},{"t":70.942,"l":2},{"t":71.873,"l":0},{"t":72.194,"l":1},{"t":72.55,"l":2},{"t":74.518,"l":2},{"t":74.869,"l":3},{"t":75.25,"l":1},{"t":76.21,"l":1},{"t":76.573,"l":4},{"t":77.914,"l":5},{"t":80.546,"l":0},{"t":81.534,"l":1},{"t":81.877,"l":2},{"t":83.222,"l":0},{"t":83.761,"l":1},{"t":84.133,"l":2},{"t":85.89,"l":3},{"t":87.177,"l":4},{"t":88.557,"l":5},{"t":89.937,"l":4},{"t":89.945,"l":1},{"t":91.306,"l":0},{"t":91.311,"l":3},{"t":92.627,"l":1},{"t":92.63,"l":4},{"t":94.014,"l":2},{"t":94.019,"l":5},{"t":96.926,"l":0},{"t":97.981,"l":2},{"t":100.333,"l":1},{"t":101.314,"l":3},{"t":103.365,"l":2},{"t":104.757,"l":5},{"t":108.077,"l":2},{"t":110.298,"l":2}];
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        const GAME_SPEED = 300;
+        let currentScreen = '';
+        let isGameRunning = false;
+        let offsetTime = 0; 
+        let hitWindows = { perfect: 0.040, good: 0.080, bad: 0.130 };
+
+        const JUDGE_IMAGES = { 
+            start: 'img/start.png',
+            perfect: 'img/perfect.png', good: 'img/good.png', bad: 'img/bad.png', miss: 'img/miss.png',
+            true: 'img/true.png'
+        };
+        let currentJudgeState = 'start'; 
+        let judgeTextTimeout;
+
+        let gameNotes = [];
+        let stats = { perfect: 0, good: 0, bad: 0, miss: 0 };
+
+        let isRecordingMode = false;
+        let isRecordingActive = false;
+        let recordedNotes = [];
+
+        const bgm = document.getElementById('bgm-player');
+        const bgmVol = document.getElementById('bgm-vol');
+        const seVol = document.getElementById('se-vol');
+        const scoreDisplay = document.getElementById('score-display');
+
+        bgmVol.addEventListener('input', (e) => bgm.volume = e.target.value);
+        bgm.volume = bgmVol.value;
+
+        bgm.addEventListener('ended', () => {
+            if (isRecordingMode) {
+                document.getElementById('btn-rec-stop').click(); 
+            } else {
+                isGameRunning = false;
+                setTimeout(() => {
+                    showResultScreen();
+                }, 2000);
+            }
+        });
+
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        const unlockAudio = () => { initAudio(); window.removeEventListener('click', unlockAudio); window.removeEventListener('keydown', unlockAudio); };
+        window.addEventListener('click', unlockAudio); window.addEventListener('keydown', unlockAudio);
+
+        function initAudio() { if (!audioCtx) audioCtx = new AudioContext(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
+
+        function playSE(type) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime; let vol = seVol.value * 0.3;
+
+            if (type === 'perfect' || type === 'rec-tap') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(880, now); osc.frequency.exponentialRampToValueAtTime(1760, now + 0.1); gain.gain.setValueAtTime(vol, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'good') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(660, now); gain.gain.setValueAtTime(vol, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); osc.start(now); osc.stop(now + 0.15);
+            } else if (type === 'bad') {
+                osc.type = 'square'; osc.frequency.setValueAtTime(330, now); gain.gain.setValueAtTime(vol * 0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); osc.start(now); osc.stop(now + 0.1);
+            } else if (type === 'miss') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, now); osc.frequency.linearRampToValueAtTime(100, now + 0.2); gain.gain.setValueAtTime(vol * 0.5, now); gain.gain.linearRampToValueAtTime(0.01, now + 0.2); osc.start(now); osc.stop(now + 0.2);
+            } else if (type === 'tap-empty') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(400, now); gain.gain.setValueAtTime(vol * 0.1, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05); osc.start(now); osc.stop(now + 0.05);
+            } else if (type === 'jump-small') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1200, now); osc.frequency.exponentialRampToValueAtTime(1500, now + 0.05); gain.gain.setValueAtTime(vol * 0.4, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3); osc.start(now); osc.stop(now + 0.3);
+            } else if (type === 'jump-big') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(1000, now); osc.frequency.exponentialRampToValueAtTime(2000, now + 0.1); gain.gain.setValueAtTime(vol * 0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); osc.start(now); osc.stop(now + 0.5);
+            } else if (type === 'true-clear') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(880, now); osc.frequency.linearRampToValueAtTime(1760, now + 0.5); gain.gain.setValueAtTime(vol * 0.6, now); gain.gain.linearRampToValueAtTime(0.01, now + 2.0); osc.start(now); osc.stop(now + 2.0);
+            }
+        }
+
+        function showScreen(screenId) { document.querySelectorAll('.screen').forEach(s => s.classList.remove('active')); document.getElementById(screenId).classList.add('active'); currentScreen = screenId; }
+        window.onload = () => { if (localStorage.getItem('yuri_unlocked') === 'true') { showScreen('title-screen'); startTitleAnimation(); } else { showScreen('lock-screen'); } };
+        function checkPassword() { if (document.getElementById('pass-input').value === 'yuri') { localStorage.setItem('yuri_unlocked', 'true'); initAudio(); showScreen('title-screen'); startTitleAnimation(); } else { alert('パスワードが違います！'); } }
+        document.getElementById('btn-pass-submit').addEventListener('click', checkPassword); document.getElementById('pass-input').addEventListener('keyup', (e) => { if (e.key === 'Enter') checkPassword(); });
+
+        let animationFrameId;
+        function startTitleAnimation() {
+            const dot = document.getElementById('title-dot'); const positions = [65, 175, 290, 400];
+            let currentTargetIndex = 0, jumpStartTime = null; const SMALL_JUMP_MS = 600, BIG_JUMP_MS = 1000, SMALL_JUMP_H = 60, BIG_JUMP_H = 150;
+            function animate(timestamp) {
+                if (!jumpStartTime) { jumpStartTime = timestamp; playSE('jump-small'); }
+                const elapsed = timestamp - jumpStartTime; const isBigJump = (currentTargetIndex === 0 && elapsed > 0); 
+                const duration = isBigJump ? BIG_JUMP_MS : SMALL_JUMP_MS; const height = isBigJump ? BIG_JUMP_H : SMALL_JUMP_H;
+                let progress = elapsed / duration;
+                if (progress >= 1) { progress = 0; jumpStartTime = timestamp; currentTargetIndex = (currentTargetIndex + 1) % positions.length; if (currentTargetIndex === 0) playSE('jump-big'); else playSE('jump-small'); }
+                let startIndex = currentTargetIndex === 0 ? positions.length - 1 : currentTargetIndex - 1;
+                let startX = positions[startIndex], endX = positions[currentTargetIndex];
+                dot.style.left = (startX + (endX - startX) * progress) + 'px'; dot.style.transform = `translateY(${-Math.sin(progress * Math.PI) * height}px)`;
+                if (currentScreen === 'title-screen') animationFrameId = requestAnimationFrame(animate);
+            }
+            animationFrameId = requestAnimationFrame(animate);
+            setTimeout(() => {
+                const titleInputHandler = (e) => { if (currentScreen === 'title-screen' && e.key === 'Enter') proceedToSelect(titleInputHandler); };
+                document.addEventListener('keydown', titleInputHandler); document.getElementById('btn-title-start').onclick = () => proceedToSelect(titleInputHandler);
+            }, 500);
+        }
+
+        function proceedToSelect(handler) { initAudio(); cancelAnimationFrame(animationFrameId); document.getElementById('title-dot').style.transform = "translateY(0)"; playSE('perfect'); document.removeEventListener('keydown', handler); setTimeout(() => { showScreen('select-screen'); initStageSelect(); }, 800); }
+
+        function initStageSelect() {
+            const list = document.getElementById('stage-list'); list.innerHTML = '';
+            for (let i = 1; i <= 10; i++) {
+                const btn = document.createElement('button'); btn.className = 'btn-common';
+                if (i === 1) {
+                    btn.innerText = `Stage ${i}: 出会い`;
+                    btn.onclick = () => { 
+                        const isRecordMode = document.getElementById('chk-record-mode').checked;
+                        bgm.src = `audio/stage${i}.mp3`; document.getElementById('record-stage-title').innerText = `🔴 Stage ${i} 譜面作成モード`;
+                        playSE('good'); startGame(isRecordMode); 
+                    };
+                } else { btn.innerText = `Stage ${i}: まだナイショ♡`; btn.disabled = true; }
+                list.appendChild(btn);
+            }
+        }
+
+        document.querySelectorAll('.btn-open-options').forEach(btn => { btn.onclick = () => document.getElementById('options-modal').style.display = 'block'; });
+        const recordRateInput = document.getElementById('record-rate'); recordRateInput.addEventListener('input', (e) => { document.getElementById('rate-display').innerText = e.target.value; bgm.playbackRate = e.target.value; });
+
+        document.getElementById('btn-rec-start').onclick = () => {
+            recordedNotes = []; document.getElementById('record-output').value = '';
+            bgm.currentTime = 0; bgm.playbackRate = recordRateInput.value; bgm.play().catch(e => console.log("再生エラー", e)); isRecordingActive = true;
+        };
+        document.getElementById('btn-rec-stop').onclick = () => { bgm.pause(); isRecordingActive = false; recordedNotes.sort((a, b) => a.t - b.t); document.getElementById('record-output').value = JSON.stringify(recordedNotes); };
+
+        function startGame(isRecord) {
+            isRecordingMode = isRecord; document.getElementById('record-panel').style.display = isRecord ? 'flex' : 'none';
+            showScreen('game-screen'); isGameRunning = true; initAudio();
+            offsetTime = document.getElementById('opt-offset').value / 1000;
+            bgm.currentTime = 0;
+            
+            stats = { perfect: 0, good: 0, bad: 0, miss: 0 };
+            updateScoreDisplay();
+            gameNotes = stage1Data.map(n => ({ t: n.t, l: n.l, hit: false }));
+
+            currentJudgeState = 'start';
+            document.getElementById('judge-image').src = JUDGE_IMAGES.start;
+            document.getElementById('judge-image').style.opacity = 0.8;
+
+            if (!isRecord) {
+                const overlay = document.getElementById('ready-overlay');
+                const word = document.getElementById('ready-word');
+                overlay.style.display = 'flex';
+                word.style.opacity = 0; word.style.transform = 'scale(0.5)';
+                
+                setTimeout(() => { word.innerText = "Are"; word.style.opacity = 1; word.style.transform = 'scale(1)'; playSE('jump-small'); }, 500);
+                setTimeout(() => { word.style.opacity = 0; word.style.transform = 'scale(1.5)'; }, 1500);
+                
+                setTimeout(() => { word.innerText = "You"; word.style.opacity = 1; word.style.transform = 'scale(1)'; playSE('jump-small'); }, 2000);
+                setTimeout(() => { word.style.opacity = 0; word.style.transform = 'scale(1.5)'; }, 3000);
+                
+                setTimeout(() => { word.innerText = "Ready?"; word.style.opacity = 1; word.style.transform = 'scale(1.2)'; playSE('jump-big'); }, 3500);
+                
+                setTimeout(() => { 
+                    word.style.opacity = 0; word.style.transform = 'scale(2)'; 
+                    setTimeout(() => overlay.style.display = 'none', 300);
+                    
+                    bgm.play().catch(e => console.log("自動再生エラー"));
+                    requestAnimationFrame(gameLoop);
+                }, 5000);
+
+            } else {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function gameLoop() {
+            if (!isGameRunning) return;
+            const currentTime = bgm.currentTime;
+            updateRulerAndNotes(currentTime);
+            checkMissedNotes(currentTime);
+            requestAnimationFrame(gameLoop);
+        }
+
+        function updateRulerAndNotes(currentTime) {
+            const rulerArea = document.getElementById('ruler-area'); rulerArea.innerHTML = '';
+            document.querySelectorAll('.visual-note').forEach(n => n.remove());
+
+            const visibleSeconds = document.getElementById('game-container').clientHeight / GAME_SPEED;
+            const adjustedTime = currentTime - offsetTime; 
+            const startTime = Math.max(0, adjustedTime - 0.5); const endTime = adjustedTime + visibleSeconds;
+
+            for (let t = Math.floor(startTime * 2) / 2; t <= endTime; t += 0.5) {
+                const mark = document.createElement('div'); mark.className = 'ruler-mark'; mark.innerText = t.toFixed(1) + 's';
+                mark.style.bottom = (90 + ((t - adjustedTime) * GAME_SPEED)) + 'px'; rulerArea.appendChild(mark);
+            }
+
+            if (!isRecordingMode) {
+                gameNotes.forEach(note => {
+                    if (!note.hit) {
+                        const timeDiff = note.t - adjustedTime;
+                        if (timeDiff >= -0.5 && timeDiff <= visibleSeconds) {
+                            const noteEl = document.createElement('div'); noteEl.className = 'visual-note';
+                            noteEl.style.bottom = (90 + (timeDiff * GAME_SPEED)) + 'px';
+                            document.getElementById(`lane-${note.l}`).appendChild(noteEl);
+                        }
+                    }
+                });
+            }
+        }
+
+        function checkMissedNotes(currentTime) {
+            if (isRecordingMode || bgm.paused) return; 
+            const adjustedTime = currentTime - offsetTime;
+            gameNotes.forEach(note => {
+                if (!note.hit && adjustedTime > note.t + hitWindows.bad) {
+                    note.hit = true; stats.miss++; updateJudge('miss'); checkS_Rank();
+                }
+            });
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (!isGameRunning || e.repeat) return;
+            
+            let laneIndex = -1;
+            if (e.key === 'z') laneIndex = 0; else if (e.key === 'x') laneIndex = 1; else if (e.key === 'c') laneIndex = 2;
+            else if (e.key === 'ArrowLeft') laneIndex = 3; else if (e.key === 'ArrowDown') laneIndex = 4; else if (e.key === 'ArrowRight') laneIndex = 5;
+
+            if (laneIndex !== -1) {
+                const laneEl = document.getElementById(`lane-${laneIndex}`);
+                laneEl.classList.add('active-lane'); setTimeout(() => laneEl.classList.remove('active-lane'), 100);
+
+                if (isRecordingMode && isRecordingActive) {
+                    playSE('rec-tap'); recordedNotes.push({ t: parseFloat(bgm.currentTime.toFixed(3)), l: laneIndex });
+                } else if (!isRecordingMode && !bgm.paused) { 
+                    const adjustedTime = bgm.currentTime - offsetTime;
+                    const targetNote = gameNotes.find(n => n.l === laneIndex && !n.hit);
+                    if (targetNote) {
+                        const timeDiff = Math.abs(targetNote.t - adjustedTime);
+                        if (timeDiff <= hitWindows.bad) {
+                            targetNote.hit = true;
+                            let type = 'miss'; if (timeDiff <= hitWindows.perfect) type = 'perfect'; else if (timeDiff <= hitWindows.good) type = 'good'; else type = 'bad';
+                            stats[type]++; updateJudge(type); checkS_Rank();
+                        } else { playSE('tap-empty'); }
+                    } else { playSE('tap-empty'); }
+                }
+            }
+        });
+
+        function updateScoreDisplay() {
+            if (gameNotes.length === 0) return;
+            const maxScore = gameNotes.length * 3;
+            const currentScore = (stats.perfect * 3) + (stats.good * 2) + (stats.bad * 1);
+            const percentage = Math.round((currentScore / maxScore) * 1000) / 10;
+            scoreDisplay.innerText = `SCORE: ${percentage}%`;
+            return percentage;
+        }
+
+        function checkS_Rank() {
+            updateScoreDisplay();
+            const processedNotes = stats.perfect + stats.good + stats.bad + stats.miss;
+            if (processedNotes === gameNotes.length && gameNotes.length > 0) {
+                const maxScore = gameNotes.length * 3;
+                const currentScore = (stats.perfect * 3) + (stats.good * 2) + (stats.bad * 1);
+                if ((currentScore / maxScore) >= 0.9) {
+                    setTimeout(() => {
+                        playSE('true-clear');
+                        const img = document.getElementById('judge-image'), text = document.getElementById('judge-text');
+                        img.style.opacity = 0; 
+                        setTimeout(() => { img.src = JUDGE_IMAGES.true; img.style.opacity = 0.8; currentJudgeState = 'true'; text.innerText = 'S RANK CLEAR!'; text.style.opacity = 1; }, 500);
+                    }, 800);
+                }
+            }
+        }
+
+        function updateJudge(type) {
+            playSE(type);
+            const img = document.getElementById('judge-image'), text = document.getElementById('judge-text');
+            const textMap = { perfect: 'PERFECT', good: 'GOOD', bad: 'BAD', miss: 'MISS' };
+            
+            text.innerText = textMap[type]; text.style.opacity = 1;
+            clearTimeout(judgeTextTimeout); judgeTextTimeout = setTimeout(() => { text.style.opacity = 0; }, 500);
+
+            if (currentJudgeState !== 'true' && currentJudgeState !== type) {
+                img.style.opacity = 0.4; 
+                setTimeout(() => { img.src = JUDGE_IMAGES[type]; img.style.opacity = 0.8; currentJudgeState = type; }, 50);
+            }
+        }
+
+        function showResultScreen() {
+            const overlay = document.getElementById('result-overlay');
+            const title = document.getElementById('result-title');
+            const scoreText = document.getElementById('result-score-text');
+            
+            const percentage = updateScoreDisplay() || 0;
+            
+            if (percentage >= 90) {
+                title.innerText = "S RANK CLEAR!!";
+            } else if (percentage >= 70) {
+                title.innerText = "A RANK CLEAR!";
+            } else {
+                title.innerText = "STAGE CLEAR";
+            }
+            
+            scoreText.innerText = `最終スコア: ${percentage}%`;
+            overlay.style.display = 'flex';
+        }
+
+        function returnToSelect() {
+            document.getElementById('result-overlay').style.display = 'none';
+            showScreen('select-screen');
+        }
+    </script>
+</body>
+</html>
